@@ -10,13 +10,12 @@ protected:
   ros::Publisher pub_;
   ros::Subscriber sub_;
   ros::NodeHandle nh_;
-  float xi,yi,zi,xf,yf,zf;
+  float xi,yi,zi,xf,yf,zf,desired_distance;
   bool executingCB;
   nav_msgs::Odometry* last_odometry_message;
   geometry_msgs::Twist message_velocity_target;
-  actionlib::SimpleActionServer<homework4::Homework4Action> as_; // NodeHandle instance must be created before this line. Otherwise strange error occurs.
+  actionlib::SimpleActionServer<homework4::Homework4Action> as_;
   std::string action_name_;
-  // create messages that are used to published result
   homework4::Homework4Result result_;
 
 public:
@@ -45,18 +44,37 @@ public:
      xf=last_odometry_message->pose.pose.position.x;
      yf=last_odometry_message->pose.pose.position.y;
      zf=last_odometry_message->pose.pose.position.z;
-
- }
-    //ROS_INFO("ODOM: X %f \n Y %f\n Z %f", last_odometry_message->pose.pose.position.x,last_odometry_message->pose.pose.position.y,last_odometry_message->pose.pose.position.z);
+     bool success = true;     
+     ROS_INFO("Goal received. Desired speed %f",message_velocity_target.linear.x);
+     bool reached=false;   
+     ROS_INFO(" xi %f\n xf %f\n yi %f\n yf %f\n zi %f\n zf %f",xi,xf,yi,yf,zi,zf);
+     if(sqrt(pow(xf-xi,2) + pow(yf-yi,2) + pow(zf-zi,2))>=desired_distance){
+       reached=true;
+     }
+     else{
+       pub_.publish(message_velocity_target);
+       if (as_.isPreemptRequested() || !ros::ok())
+       { 
+        ROS_INFO("%s: Preempted", action_name_.c_str());
+        // set the action state to preempted
+        as_.setPreempted();
+        success = false;
+        executingCB=false;
+       } 
+     }
+     if(success and reached)
+     {
+       result_.odom_pose=*last_odometry_message;
+       ROS_INFO("%s: Succeeded", action_name_.c_str());
+       // set the action state to succeeded
+       as_.setSucceeded(result_);
+       executingCB=false;
+     }
+    }
   }
   void executeCB(const homework4::Homework4GoalConstPtr &goal)
   {
-
-    while(last_odometry_message==NULL){
-      ROS_INFO("WAITING FOR ODOMETRY MESSAGE");
-    }
-    bool success = true;
-    executingCB=true;
+    desired_distance=goal->distance;
     message_velocity_target.linear.x=goal->desired_speed; 
     message_velocity_target.linear.y=0; 
     message_velocity_target.linear.z=0; 
@@ -64,41 +82,9 @@ public:
     message_velocity_target.angular.y=0; 
     message_velocity_target.angular.z=0; 
     ROS_INFO("Goal received. Desired speed %f",message_velocity_target.linear.x);
-    
-    // publish info to the console for the user
-  //  ROS_INFO("%s: Executing,  %i with seeds %i, %i", action_name_.c_str(), goal->order, feedback_.sequence[0], feedback_.sequence[1]);
-
- //   ROS_INFO("Goal received4\n position x %f\n position y %f, position z %f",(last_odometry_message)->pose.pose.position.x,(last_odometry_message)->pose.pose.position.y,(last_odometry_message)->pose.pose.position.z);
-    bool reached=false;   
-    while(!reached){
-        ROS_INFO(" xi %f\n xf %f\n yi %f\n yf %f\n zi %f\n zf %f",xi,xf,yi,yf,zi,zf);
-  //      ROS_INFO("DISTANCE %f, TARGET %f ",sqrt(pow(xf-xi,2) + pow(yf-yi,2) + pow(zf-zi,2)),goal->distance);
-        if(sqrt(pow(xf-xi,2) + pow(yf-yi,2) + pow(zf-zi,2))>=goal->distance){
-          reached=true;
-        }
-  	else{
-          pub_.publish(message_velocity_target);
-          if (as_.isPreemptRequested() || !ros::ok())
-           { 
-    	    ROS_INFO("%s: Preempted", action_name_.c_str());
-    	    // set the action state to preempted
-    	    as_.setPreempted();
-    	    success = false;
-    	    break;
-    	   } //(last_odometry_message->pose.pose.position.x)<((&initial_position)->x)
-        }
-    }
-    if(success)
-    {
-      result_.odom_pose=*last_odometry_message;
-      ROS_INFO("%s: Succeeded", action_name_.c_str());
-      // set the action state to succeeded
-      as_.setSucceeded(result_);
-    }
-    executingCB=false;
+    executingCB=true;
+    while(executingCB){}
   }
-
-
 };
 
 
